@@ -1,0 +1,318 @@
+use windows
+use Dwmapi
+use d2d1
+use boxroom
+
+
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	static Box *prebox = null
+
+	switch message
+		case WM_ERASEBKGND
+			return true
+		case WM_PAINT
+			if __room.main
+				ulong timestamp = __getTimeStamp()
+				__room.main(timestamp)
+			__box_reDraw()
+			return 0
+		case WM_INPUT
+			uint dwSize
+			GetRawInputData((HRAWINPUT)lParam,RID_INPUT,null,&dwSize,sizeof(RAWINPUTHEADER))
+			byte *lpb = new byte[dwSize]
+			if lpb == null
+				return 0
+			if GetRawInputData((HRAWINPUT)lParam,RID_INPUT,lpb,&dwSize,sizeof(RAWINPUTHEADER)) != dwSize
+				return 0
+
+			RAWINPUT *raw = (RAWINPUT*)lpb
+			if raw.header..dwType == RIM_TYPEKEYBOARD
+				out raw.data..keyboard..VKey
+				return 0
+			else if (raw.header..dwType == RIM_TYPEMOUSE) //&&(raw.data..mouse..usFlags| MOUSE_MOVE_RELATIVE)
+				RECT rc
+				GetWindowRect(hwnd,&rc)
+				rc..left += 8
+				rc..right += 8
+				int sx,sy
+				if raw.data..mouse..usFlags&MOUSE_MOVE_ABSOLUTE
+					sx = (int)((raw.data..mouse..lLastX * GetSystemMetrics(SM_CXSCREEN))/65535) -rc..left
+					sy = (int)((raw.data..mouse..lLastY * GetSystemMetrics(SM_CYSCREEN))/65535) -rc..top
+				else
+					POINT pt
+					GetCursorPos(&pt)
+					sx = pt..x - rc..left
+					sy = pt..y - rc..top
+				MouseData data
+				if IsZoomed(hwnd)
+					sy -= 8
+				for Box* b=__box_boxes.__prev,b!=__box_boxes,b=b.__prev
+					if (b.left<=sx)&&(sx<b.right)&&(b.top<=sy)&&(sy<b.bottom)
+						switch raw.data..mouse..usButtonFlags
+							case RI_MOUSE_WHEEL
+								out raw.data..mouse..usButtonData
+								break
+							case 0
+								if prebox==null
+									data..state = MOUSE_OVER
+								else if b==prebox
+									data..state = MOUSE_MOVE
+								else
+									if prebox.input
+										data..state = MOUSE_OUT
+										prebox.input(&data,prebox)
+									data..state = MOUSE_OVER
+								break
+							default
+								data..state = (MouseState)raw.data..mouse..usButtonFlags
+						data..x = sx-b.left
+						data..y = sy-b.top
+						if b.input
+							b.input(&data,b)
+						prebox = b
+						free lpb
+						return 0
+				if prebox&&prebox.input
+					data..state = MOUSE_OUT
+					prebox.input(&data,prebox)
+				prebox = null
+				return 0
+		case WM_NCCALCSIZE
+			if wParam
+				NCCALCSIZE_PARAMS* p = (NCCALCSIZE_PARAMS*)lParam
+				p.rgrc[0]..left += 8
+				p.rgrc[0]..right -=8
+				p.rgrc[0]..bottom -=8
+				return WVR_VALIDRECTS
+			else
+				RECT* r = (RECT*)lParam
+				r.left += 8
+				r.right -=8
+				r.bottom -=8
+				return 0
+		case WM_NCHITTEST
+			RECT rc
+			GetWindowRect(hwnd,&rc)
+			int x = LOWORD(lParam)
+			int y = HIWORD(lParam)
+			if IsZoomed(hwnd)
+				y -= 8
+
+			if (__room.captionRect!=null)&&(__room.captionRect.left+rc..left<=x+8)&&(x+8<__room.captionRect.right+rc..left)&&(__room.captionRect.top+rc..top<=y)&&(y<__room.captionRect.bottom+rc..top)
+				return HTCAPTION
+			if x<rc..left+8
+				if y<rc..top+8
+					return HTTOPLEFT
+				if rc..bottom-8<=y
+					return HTBOTTOMLEFT
+				return HTLEFT
+			if rc..right-8<=x
+				if y<rc..top+8
+					return HTTOPRIGHT
+				if rc..bottom-8<=y
+					return HTBOTTOMRIGHT
+				return HTRIGHT
+			if rc..bottom-8<=y
+				return HTBOTTOM
+
+			return HTCLIENT
+		case WM_SIZE
+			RECT windowR
+			GetWindowRect(hwnd,&windowR)
+			RECT clientR
+			GetClientRect(hwnd,&clientR)
+			hr = __box_target.Resize(D2D1::SizeU(clientR..right,clientR..bottom))
+			out hr
+			out clientR..right
+			out clientR..bottom
+			switch wParam
+				case SIZE_MAXIMIZED
+					__box_target.SetTransform(D2D1::Matrix3x2F::Translation(0,8))
+				case SIZE_RESTORED
+					__box_target.SetTransform(D2D1::Matrix3x2F::Translation(0,1))
+				
+			if __room.resize
+				if IsZoomed(hwnd)
+					__room.resize(clientR..right,clientR..bottom-8,SIZE_MAXIMAM)
+				else
+					__room.resize(clientR..right,clientR..bottom-1,SIZE_NORMAL)
+
+			return 0
+		case WM_DESTROY
+			PostQuitMessage(0)
+			return 0
+	return DefWindowProc(hwnd,message,wParam,lParam)
+
+
+
+Room *box_createRoom(int width,int height)
+
+	if __room != null
+		return null
+
+	Room *room = new Room
+		captionRect = null	
+	__room = room
+
+	HINSTANCE hInstance = GetModuleHandle(null)
+	WNDCLASSEX *wcx = new WNDCLASSEX
+		cbSize        = sizeof(WNDCLASSEX)
+		style         = 0 //CS_HREDRAW|CS_VREDRAW
+		lpfnWndProc   = WndProc
+		cbClsExtra    = 0
+		cbWndExtra    = 0
+		hInstance     = hInstance
+		hIcon         = LoadIcon((HINSTANCE)null,IDI_APPLICATION)
+		hCursor       = LoadCursor(null,IDC_ARROW)
+		hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH)
+		lpszMenuName  = "MainMenu"
+		lpszClassName = "RoomClass"
+		hIconSm       = LoadIcon(null,IDI_APPLICATION)
+
+	RegisterClassEx(wcx)
+	free wcx
+
+	__box_hwnd = CreateWindow(
+		"RoomClass",
+		"RoomWindow",
+		WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT,CW_USEDEFAULT,
+		width+16,height+8+1,
+		(HWND)null,(HMENU)null,
+		hInstance,(LPVOID)null)
+
+	out "window initialize ...complete!"
+	
+	// MARGINS margins = {1,1,1,1}
+	MARGINS margins = {0,0,1,0}
+	// MARGINS margins = {-1}
+	DwmExtendFrameIntoClientArea(__box_hwnd,&margins)
+
+	out "dwm initialize ...complete!"
+
+	RECT rc
+	GetClientRect(__box_hwnd,&rc)
+	out rc..right
+	out rc..bottom
+
+	ID2D1Factory *factory
+	hr = D2D1CreateFactory(
+		D2D1_FACTORY_TYPE_SINGLE_THREADED,
+		&factory)
+	out hr
+
+	hr = factory.CreateHwndRenderTarget(
+		&D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED)),
+		&D2D1::HwndRenderTargetProperties(__box_hwnd,D2D1::SizeU(rc..right,rc..bottom)),
+		&__box_target)
+	out hr
+	factory.Release()
+	__box_target.SetTransform(D2D1::Matrix3x2F::Translation(0,1))
+
+	out "direct2d initialize ...complete!"
+	out rc..right
+	out rc..bottom
+
+	RAWINPUTDEVICE Rid[2]
+	Rid[0]..usUsagePage = 0x01
+	Rid[0]..usUsage = 0x02 //mouse
+	Rid[0]..dwFlags = RIDEV_INPUTSINK
+	Rid[0]..hwndTarget = __box_hwnd
+
+	Rid[1]..usUsagePage = 0x01
+	Rid[1]..usUsage = 0x06 //keyboard
+	Rid[1]..dwFlags = RIDEV_NOHOTKEYS
+	Rid[1]..hwndTarget = 0
+
+	RegisterRawInputDevices(Rid,2,sizeof(Rid[0]))
+
+	out "rawinput initialize ...complete!"
+
+	__box_boxes = new Box
+		__next = __box_boxes
+		__prev = __box_boxes
+	return room
+
+
+
+void box_deleteRoom(Room* room)
+	__box_target.Release()
+	DestroyWindow(__box_hwnd)
+	free room
+
+
+void box_addtoRoom(Room *room,Box *box)
+	box.__next = __box_boxes
+	box.__prev = __box_boxes.__prev
+	box.__next.__prev = box
+	box.__prev.__next = box
+	__box_sortBoxesbyZ()
+
+
+void box_removefromRoom(Room *room,Box *box)
+	box.__next.__prev = box.__prev
+	box.__prev.__next = box.__next
+	box.__next = null
+	box.__prev = null
+
+
+void box_showRoom(Room* room)
+	ShowWindow(__box_hwnd,SW_SHOWDEFAULT)
+
+
+void box_exitLoop(Room* room)
+	PostQuitMessage(0)
+
+void box_maximize(Room* room)
+	ShowWindow(__box_hwnd,SW_MAXIMIZE)
+
+void box_normalize(Room* room)
+	ShowWindow(__box_hwnd,SW_RESTORE)
+
+void box_minimize(Room* room)
+	ShowWindow(__box_hwnd,SW_MINIMIZE)
+
+
+void __box_reDraw()
+	__box_sortBoxesbyZ()
+	__box_target.BeginDraw()
+	for Box* b=__box_boxes.__next,b!=__box_boxes,b=b.__next
+		if b.sheet
+			if b.sheet.__bitmap
+				if b.sRect
+					__box_target.DrawBitmap(
+						b.sheet.__bitmap,
+						(D2D1_RECT_F*)&b.left,
+						1.0f,
+						D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+						(D2D1_RECT_F*)b.sRect)
+				else
+					__box_target.DrawBitmap(
+						b.sheet.__bitmap,
+						(D2D1_RECT_F*)&b.left,
+						1.0f,
+						D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+						(D2D1_RECT_F*)&b.left)
+			else if b.sheet.__brush
+				__box_target.FillRectangle(
+					(D2D1_RECT_F*)&b.left,
+					b.sheet.__brush)
+
+	__box_target.EndDraw()
+
+
+void __box_sortBoxesbyZ()
+	Box *c
+	int i = 0
+	for Box* b=__box_boxes.__next,b!=__box_boxes,b=b.__next
+		if b.z<b.__prev.z
+			Box *temp = b.__prev
+			for c=b.__prev,c!=__box_boxes&&b.z<c.z,c=c.__prev
+			b.__next.__prev = b.__prev
+			b.__prev.__next = b.__next
+			b.__next = c.__next
+			b.__prev = c
+			b.__next.__prev = b
+			b.__prev.__next = b
+			b = temp

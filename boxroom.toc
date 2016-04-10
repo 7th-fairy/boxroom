@@ -1,0 +1,95 @@
+use D2D1
+use wincodec
+
+enum SizeState
+	SIZE_MAXIMAM
+	SIZE_NORMAL
+
+enum MouseState
+	MOUSE_LEFT_DOWN = 0x0001
+	MOUSE_LEFT_UP = 0x0002
+	MOUSE_RIGHT_DOWN = 0x0004
+	MOUSE_RIGHT_UP = 0x0008
+	MOUSE_MIDDLE_DOWN = 0x0010
+	MOUSE_MIDDLE_UP = 0x0020
+	MOUSE_WHEEL_DOWN = 0x0400
+	MOUSE_WHEEL_UP = 0x0800
+	MOUSE_OVER = 0x1000
+	MOUSE_OUT = 0x2000
+	MOUSE_MOVE = 0x3000
+
+struct Rect
+	float left
+	float top
+	float right
+	float bottom
+
+struct MouseData
+	MouseState state
+	int x
+	int y
+
+struct KeyData
+	int key
+
+struct Sheet
+	union
+		ID2D1SolidColorBrush *__brush
+		struct
+			uint __width
+			uint __height
+	ID2D1Bitmap *__bitmap
+	ID2D1BitmapRenderTarget *__rTarget
+
+struct Box
+	Box *__next
+	Box *__prev
+	float left
+	float top
+	float right
+	float bottom
+	uint z
+	void (*input)(MouseData *data,Box *box)
+	Sheet *sheet
+	Rect *sRect
+
+struct Room
+	Rect *captionRect
+	void (*resize)(int width,int height,SizeState state)
+	void (*input)(KeyData *data)
+	void (*main)(ulong timestamp)
+
+struct Subset
+	Box **__boxes
+	uint __length
+	float __x
+	float __y
+	uint __z
+
+use room
+use loop
+use sheet
+use subset
+
+global HWND __box_hwnd
+global ID2D1HwndRenderTarget *__box_target
+global Box *__box_boxes
+global Room *__room
+global HRESULT hr
+
+
+Box *box_createBox(Room *room,Subset *subset,float left,float top,float right,float bottom,uint z,void (*input)(MouseData*,Box*),Sheet *sheet,Rect *sRect)
+	Box *box = new Box
+		left = left
+		right = right
+		top = top
+		bottom = bottom
+		input = input
+		sheet = sheet
+		sRect = sRect
+	if room
+		box_addtoRoom(room,box)
+	if subset
+		box_addtoSubset(subset,box)
+	return box
+

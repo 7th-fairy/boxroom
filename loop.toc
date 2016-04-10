@@ -1,0 +1,24 @@
+use windows
+use mmsystem
+use boxroom
+
+
+void box_gameLoop(Room *room)
+	MSG msg
+	while PeekMessage(&msg,null,0,0,PM_NOREMOVE)
+		if GetMessage(&msg,null,0,0)
+			TranslateMessage(&msg)
+			DispatchMessage(&msg)
+		else
+			break
+		//ulong timestamp = __getTimeStamp()
+		//__box_reDraw()
+
+ulong __getTimeStamp()
+	static uint current = 0
+	static uint pre = 0
+	static uint high = 0
+	current = timeGetTime()
+	high += current < pre
+	pre = current
+	return high * 0x100000000ull + (ulong)current

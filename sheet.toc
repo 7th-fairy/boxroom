@@ -1,0 +1,118 @@
+use windows
+use wincodec
+use D2D1
+
+use boxroom
+
+Sheet *box_createColorSheet(uint color)
+	Sheet* sheet = new Sheet
+	hr = __box_target.CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF(color,(color>>24)/0xFF)),
+		&sheet.__brush)
+	out hr
+	out "ColorSheet created!"
+	return sheet
+
+Sheet *box_createSheetFromBuffer(uint *buffer,uint width,uint height)
+	Sheet* sheet = new Sheet
+	hr = __box_target.CreateBitmap(
+		D2D1::SizeU(width,height),
+		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE)),
+		&sheet.__bitmap)
+	out hr
+	hr = sheet.__bitmap.CopyFromMemory(
+		&D2D1::RectU(0,0,width,height),
+		buffer,
+		width*4)
+	out hr
+	sheet.__width = width
+	sheet.__height = height
+	out "BufferSheet created!"
+	return sheet
+
+Sheet *box_createSheetFromFile(wchar_t *filename)
+	IWICImagingFactory *factory = null
+	IWICBitmapDecoder *decoder = null
+	IWICBitmapFrameDecode *source = null
+	IWICFormatConverter *converter = null
+	Sheet* sheet = new Sheet
+	CoInitialize(null)
+	hr = CoCreateInstance(
+		CLSID_WICImagingFactory,
+		null,
+		CLSCTX_INPROC_SERVER,
+		IID_IWICImagingFactory,
+		(LPVOID*)&factory)
+	out hr
+
+	hr = factory.CreateDecoderFromFilename(
+		filename,
+		null,
+		GENERIC_READ,
+		WICDecodeMetadataCacheOnDemand,
+		&decoder)
+	out hr
+
+	hr = decoder.GetFrame(0,&source)
+	out hr
+
+	hr = factory.CreateFormatConverter(&converter)
+	out hr
+	hr = converter.Initialize(
+		source,
+		GUID_WICPixelFormat32bppPBGRA,
+		WICBitmapDitherTypeNone,
+		null,0.0f,
+		WICBitmapPaletteTypeMedianCut)
+	out hr
+
+	hr = __box_target.CreateBitmapFromWicBitmap(
+		converter,
+		null,
+		&sheet.__bitmap)
+	out hr
+
+	converter.Release()
+	source.Release()
+	decoder.Release()
+	factory.Release()
+	out "FileSheet created!"
+	return sheet
+
+Sheet *box_createDrawSheet(uint width,uint height)
+	Sheet *sheet = new Sheet
+	hr = __box_target.CreateCompatibleRenderTarget(
+		D2D1::SizeF(width,height),
+		&sheet.__rTarget)
+	out hr
+	hr = sheet.__rTarget.GetBitmap(&sheet.__bitmap)
+	out hr
+	sheet.__width = width
+	sheet.__height = height
+	out "DrawSheet created!"
+	return sheet
+
+void box_deleteSheet(Sheet *sheet)
+	if sheet.__brush
+		sheet.__brush.Release()
+	if sheet.__bitmap
+		sheet.__bitmap.Release()
+	if sheet.__rTarget
+		sheet.__rTarget.Release()
+	free sheet
+
+void box_refreshSheet(Sheet *sheet,uint *buffer)
+	hr = sheet.__bitmap.CopyFromMemory(
+		&D2D1::RectU(0,0,sheet.__width,sheet.__height),
+		buffer,
+		sheet.__width*4)
+	out hr
+
+void box_beginDraw(Sheet *sheet)
+	sheet.__rTarget.BeginDraw()
+
+void box_endDraw(Sheet *sheet)
+	sheet.__rTarget.EndDraw()
+	sheet.__bitmap.Release()
+	sheet.__rTarget.GetBitmap(&sheet.__bitmap)
+	out hr

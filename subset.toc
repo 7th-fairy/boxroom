@@ -1,0 +1,73 @@
+use boxroom
+
+Subset *box_createSubset(float x,float y)
+	Subset *subset = new Subset
+		__x = x
+		__y = y
+	subset.__boxes = new Box*[0]
+	subset.__length = 0
+	return subset
+
+void box_deleteSubset(Subset *subset)
+	free subset.__boxes
+	free subset
+
+void box_addtoSubset(Subset *subset,Box *box)
+	Box **array = new Box*[subset.__length+1]
+	memcpy(array,subset.__boxes,subset.__length*sizeof(Box*))
+	array[subset.__length] = box;
+	free subset.__boxes
+	subset.__boxes = array
+	subset.__length += 1
+
+void box_moveSubsetRelative(Subset *subset,float x,float y)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].left   += x
+		subset.__boxes[i].right  += x
+		subset.__boxes[i].top    += y
+		subset.__boxes[i].bottom += y
+	subset.__x += x
+	subset.__y += y
+		
+void box_moveSubsetAbsolute(Subset *subset,float x,float y)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].left   += x - subset.__x
+		subset.__boxes[i].right  += x - subset.__x
+		subset.__boxes[i].top    += y - subset.__y
+		subset.__boxes[i].bottom += y - subset.__y
+	subset.__x = x
+	subset.__y = y
+
+void box_moveSubsetXRelative(Subset *subset,float x)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].left   += x
+		subset.__boxes[i].right  += x
+	subset.__x += x
+
+void box_moveSubsetYRelative(Subset *subset,float y)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].top    += y
+		subset.__boxes[i].bottom += y
+	subset.__y += y
+
+void box_moveSubsetZRelative(Subset *subset,float z)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].z += z
+	subset.__z += z
+		
+void box_moveSubsetXAbsolute(Subset *subset,float x)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].top    += x - subset.__x
+		subset.__boxes[i].bottom += x - subset.__x
+	subset.__x = x
+		
+void box_moveSubsetYAbsolute(Subset *subset,float y)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].top    += y - subset.__y
+		subset.__boxes[i].bottom += y - subset.__y
+	subset.__y = y
+		
+void box_moveSubsetZAbsolute(Subset *subset,float z)
+	for int i=0,i<subset.__length,i++
+		subset.__boxes[i].z += z - subset.__z
+	subset.__z = z
